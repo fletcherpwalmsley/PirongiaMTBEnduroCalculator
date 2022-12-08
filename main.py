@@ -2,6 +2,18 @@ import PySimpleGUI as sg
 from datetime import datetime
 import csv
 import os
+import pickle
+
+
+# Global Functions
+valid_time_flag = False
+valid_name_flag = False
+
+def set_save_lap_activity():
+    if valid_name_flag and valid_time_flag:
+        window["-SAVELAP-"].update(disabled=False)
+    else:
+        window["-SAVELAP-"].update(disabled=True)
 
 # Making this global so it is easer to find the indexes of
 race_classes = ["Mens", "Womens", "Open", "Youth Male", "Youth Female", "EBike"]
@@ -11,6 +23,20 @@ def get_class_index(val):
         if _class[1] == val:
             return _class[0]
     return -1
+
+def clear_rider_data_fields(window):
+    # Clear data fields
+    window["-NAME-"].update("")
+    window["-NUMBER-"].update("")
+    window["-EMECONTACT-"].update("")
+    window["-CLASSLIST-"].update(set_to_index=0)
+    window["-SAVED RIDERS-"].update(set_to_index=-1)
+
+def save_data():
+    data.csv_save()
+    athletes_file = open('rider_data.pkl', 'wb')
+    pickle.dump(data, athletes_file)
+
 
 input_list_column = [
     [
@@ -165,16 +191,6 @@ layout = [[
 
 window = sg.Window("Pirongia MTB  ", layout)
 
-# Global Functions
-valid_time_flag = False
-valid_name_flag = False
-
-def set_save_lap_activity():
-    if valid_name_flag and valid_time_flag:
-        window["-SAVELAP-"].update(disabled=False)
-    else:
-        window["-SAVELAP-"].update(disabled=True)
-
 
 class DataHandler:
     """
@@ -185,42 +201,9 @@ class DataHandler:
         self.race1_times = {}
         self.race2_times = {}
         self.race3_times = {}
-
-        #CSV
         self.csv_file = csv_file
-        if os.path.isfile(self.csv_file):
-            self.csv_load()
-
-    # Persistence data storage, will read and save race_data.csv from the local directory
-    def csv_load(self):
-        csv_reader = csv.reader(open(self.csv_file))
-        for row in csv_reader:
-            if len(row) > 0:
-                self.create_rider(row[0])
-                self.update_rider_data(row[0], "-NUMBER-", row[1])
-                self.update_rider_data(row[0], "-EMECONTACT-", row[2])
-                self.update_rider_data(row[0], "-CLASSLIST-", row[3])
-
-                # Now the fun part, getting all the race times out :/
-                i = 4
-                while i < len(row):
-                    # The "?" splits the race number from the time. This implementation only
-                    # supports 9 total races, but could be easily expanded
-                    if row[i][2] == "?":  
-                        race_number = row[i][1]
-                    else:
-                        assert("Invalid CSV data") # Assert here, as data will be lost otherwise
-                    
-                    # Like above "]" denotes the end of the time. If it the time string is longer (i.e the hour
-                    # part is greater than 9) this statement will fail
-                    if row[i][10] == "]":  
-                        time_str = row[i][3:10]
-                        lap_time = datetime.strptime(time_str, "%H:%M:%S")
-                        self.add_lap_time("Race 1", row[1], lap_time)
-                    i = i + 1
-                
-
-
+    
+    # The CSV is used incase someone wants to use the data in excel
     def csv_save(self):
         csv_writer = csv.writer(open(self.csv_file, 'w'))
         for rider in self.rider_data.keys():
@@ -229,20 +212,23 @@ class DataHandler:
             out_row.append(self.rider_data[rider]["-NUMBER-"])
             out_row.append(self.rider_data[rider]["-EMECONTACT-"])
             out_row.append(self.rider_data[rider]["-CLASSLIST-"])
-
+            out_row.append(f"?")
             # Save lap times
             number = self.rider_data[rider]["-NUMBER-"]
             if number in self.race1_times:
                 for time in self.race1_times[number]:
-                    out_row.append(f"[1?{time}]")
+                    out_row.append(f"1")
+                    out_row.append(f"{time}")
 
             if number in self.race2_times:
                 for time in self.race2_times[number]:
-                    out_row.append(f"[2?{time}]")
+                    out_row.append(f"2")
+                    out_row.append(f"{time}")
 
             if number in self.race3_times:
                 for time in self.race3_times[number]:
-                    out_row.append(f"[3?{time}]")
+                    out_row.append(f"3")
+                    out_row.append(f"{time}")
             csv_writer.writerow(out_row)
 
     # Data create/delete functions
@@ -340,18 +326,14 @@ class DataHandler:
         return False
 
 
-def clear_rider_data_fields(window):
-    # Clear data fields
-    window["-NAME-"].update("")
-    window["-NUMBER-"].update("")
-    window["-EMECONTACT-"].update("")
-    window["-CLASSLIST-"].update(set_to_index=0)
-    window["-SAVED RIDERS-"].update(set_to_index=-1)
-
-
 # Run the Event Loop
-data = DataHandler("rider_data.csv")
+if os.path.isfile("rider_data.pkl"):
+    pickle_file = open("rider_data.pkl", "rb")
+    data = pickle.load(pickle_file)
+else:
+    data = DataHandler("rider_data.csv")
 start_up_ready = True
+
 while True:
     event, values = window.read()
 
@@ -372,7 +354,7 @@ while True:
 
         window["-SAVED RIDERS-"].update(data.get_rider_list())
         clear_rider_data_fields(window)
-        data.csv_save()
+        save_data()
     
     # Existing Rider Selected, load values in
     if event == "-SAVED RIDERS-":
@@ -389,7 +371,7 @@ while True:
         data.delete_rider(values["-SAVED RIDERS-"][0])
         window["-SAVED RIDERS-"].update(data.get_rider_list())
         clear_rider_data_fields(window)
-        data.csv_save()
+        save_data()
 
 
 # ***** Race Data Tab ******
@@ -430,7 +412,7 @@ while True:
              )
         )
         window["-RIDERLAPTIMES-"].update(data.get_number_laptimes_str(values["-RACELIST-"][0], values["-DATANUM-"]))
-        data.csv_save()
+        save_data()
 
     # Race has been updated, update the lap times if the number is valid
     if event == "-RACELIST-":
@@ -447,7 +429,6 @@ while True:
     # Functions to run after any update
     set_save_lap_activity()
 
-
-data.csv_save()
+save_data()
 window.close()
 

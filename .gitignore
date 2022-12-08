@@ -2,3 +2,4 @@
 *.idea
 *output
 *rider_data.csv
+*.pkl

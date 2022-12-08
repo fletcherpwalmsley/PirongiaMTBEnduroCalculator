@@ -3,6 +3,15 @@ from datetime import datetime
 import csv
 import os
 
+# Making this global so it is easer to find the indexes of
+race_classes = ["Mens", "Womens", "Open", "Youth Male", "Youth Female", "EBike"]
+
+def get_class_index(val):
+    for _class in enumerate(race_classes):
+        if _class[1] == val:
+            return _class[0]
+    return -1
+
 input_list_column = [
     [
         sg.Text("Name   "),
@@ -18,8 +27,8 @@ input_list_column = [
     ],
     [
         sg.Listbox(
-            values=["Mens(A)", "Womens(A)", "Mens(B)", "Womens(B)", "Youth", "Open"],
-            default_values=["Mens(A)"],
+            values=race_classes,
+            default_values=race_classes[0],
             enable_events=True, 
             size=(20, 10), 
             key="-CLASSLIST-"
@@ -27,6 +36,8 @@ input_list_column = [
     ],
     [
         sg.Button(button_text="Save Rider", key = "-SAVE-"),
+        sg.Button(button_text="Clear Fields", key = "-CLEAR-"),
+        sg.Button(button_text="Delete Rider", key = "-DELETE-"),
     ],
 ]
 
@@ -44,7 +55,7 @@ rider_viewer_column = [
 data_enter_column = [
     [
         sg.Listbox(
-            values=["Race 1", "Race 2", "Race 3"],
+            values=["Race 1", "Race 2"],
             default_values=["Race 1"],
             enable_events=True,
             size=(10, 3),
@@ -93,11 +104,18 @@ rider_lap_times = [
 result_view = [
     [
         sg.Listbox(
-            values=["Race 1", "Race 2", "Race 3", "Series"],
+            values=["Race 1", "Race 2", "Series"],
             default_values=["Race 1"],
             enable_events=True,
-            size=(10, 4),
+            size=(10, 6),
             key="-RACERESULTLIST-"
+        ),
+            sg.Listbox(
+            values=race_classes,
+            default_values=race_classes[0],
+            enable_events=True,
+            size=(10, 6),
+            key="-RESULTCLASSLIST-"
         )
     ],
     [
@@ -183,6 +201,26 @@ class DataHandler:
                 self.update_rider_data(row[0], "-EMECONTACT-", row[2])
                 self.update_rider_data(row[0], "-CLASSLIST-", row[3])
 
+                # Now the fun part, getting all the race times out :/
+                i = 4
+                while i < len(row):
+                    # The "?" splits the race number from the time. This implementation only
+                    # supports 9 total races, but could be easily expanded
+                    if row[i][2] == "?":  
+                        race_number = row[i][1]
+                    else:
+                        assert("Invalid CSV data") # Assert here, as data will be lost otherwise
+                    
+                    # Like above "]" denotes the end of the time. If it the time string is longer (i.e the hour
+                    # part is greater than 9) this statement will fail
+                    if row[i][10] == "]":  
+                        time_str = row[i][3:10]
+                        lap_time = datetime.strptime(time_str, "%H:%M:%S")
+                        self.add_lap_time("Race 1", row[1], lap_time)
+                    i = i + 1
+                
+
+
     def csv_save(self):
         csv_writer = csv.writer(open(self.csv_file, 'w'))
         for rider in self.rider_data.keys():
@@ -207,7 +245,7 @@ class DataHandler:
                     out_row.append(f"[3?{time}]")
             csv_writer.writerow(out_row)
 
-    # Data create functions
+    # Data create/delete functions
     def create_rider(self, rider):
         self.rider_data[rider] = {}
 
@@ -233,6 +271,11 @@ class DataHandler:
                     self.race3_times[number].append(time)
                 else:
                     self.race3_times[number] = [time]
+            case _:
+                assert ("Not a valid race type")
+
+    def delete_rider(self, rider):
+        del self.rider_data[rider]
 
     # Getters don't interact with the CSV, just loaded values
     def get_rider_list(self):
@@ -265,7 +308,7 @@ class DataHandler:
             retlist.append(str(time))
         return retlist
 
-    def get_race_winner(self, race):
+    def get_race_winner(self, race, _class):
         race_dict = {}
         sort_list = []
         ret_list = []
@@ -278,7 +321,8 @@ class DataHandler:
                 race_dict = self.race3_times
 
         for number in race_dict.keys():
-            sort_list.append((min(race_dict[number]), number))
+            if (self.number_in_class(number, _class)):
+                sort_list.append((min(race_dict[number]), number))
 
         sort_list.sort()
 
@@ -288,6 +332,21 @@ class DataHandler:
             i = i+1
 
         return ret_list
+
+    def number_in_class(self, number, _class):
+        name = self.get_name_from_number(number)
+        if self.get_rider_data(name, "-CLASSLIST-") == _class:
+            return True
+        return False
+
+
+def clear_rider_data_fields(window):
+    # Clear data fields
+    window["-NAME-"].update("")
+    window["-NUMBER-"].update("")
+    window["-EMECONTACT-"].update("")
+    window["-CLASSLIST-"].update(set_to_index=0)
+    window["-SAVED RIDERS-"].update(set_to_index=-1)
 
 
 # Run the Event Loop
@@ -312,12 +371,8 @@ while True:
         data.update_rider_data(values["-NAME-"], "-CLASSLIST-", values["-CLASSLIST-"][0])
 
         window["-SAVED RIDERS-"].update(data.get_rider_list())
-
-        # Clear data fields
-        window["-NAME-"].update("")
-        window["-NUMBER-"].update("")
-        window["-EMECONTACT-"].update("")
-        # window["-CLASSLIST-"].update(set_to_index=[])
+        clear_rider_data_fields(window)
+        data.csv_save()
     
     # Existing Rider Selected, load values in
     if event == "-SAVED RIDERS-":
@@ -325,7 +380,16 @@ while True:
         window["-NAME-"].update(rider[0])
         window["-NUMBER-"].update(data.get_rider_data(rider[0], "-NUMBER-"))
         window["-EMECONTACT-"].update(data.get_rider_data(rider[0], "-EMECONTACT-"))
-        #window["-CLASSLIST-"].update(set_to_index=data.get_rider_data(rider[0], "-CLASSLIST-"))
+        window["-CLASSLIST-"].update(set_to_index=get_class_index(data.get_rider_data(rider[0], "-CLASSLIST-")))
+
+    if event == "-CLEAR-":
+        clear_rider_data_fields(window)
+
+    if event == "-DELETE-":
+        data.delete_rider(values["-SAVED RIDERS-"][0])
+        window["-SAVED RIDERS-"].update(data.get_rider_list())
+        clear_rider_data_fields(window)
+        data.csv_save()
 
 
 # ***** Race Data Tab ******
@@ -361,11 +425,12 @@ while True:
             values["-RACELIST-"][0],
             values["-DATANUM-"],
             (
-                datetime.strptime(values["-ENDTIME-"], "%H:%M:%S") -
-                datetime.strptime(values["-STARTTIME-"], "%H:%M:%S")
+                datetime.strptime(values["-ENDTIME-"], "%H.%M.%S") -
+                datetime.strptime(values["-STARTTIME-"], "%H.%M.%S")
              )
         )
         window["-RIDERLAPTIMES-"].update(data.get_number_laptimes_str(values["-RACELIST-"][0], values["-DATANUM-"]))
+        data.csv_save()
 
     # Race has been updated, update the lap times if the number is valid
     if event == "-RACELIST-":
@@ -376,8 +441,8 @@ while True:
                 window["-RIDERLAPTIMES-"].update([])
 
 # ***** Result Tab ******
-    if event == "-RACERESULTLIST-":
-        window["-RESULTS-"].Update(data.get_race_winner(values["-RACERESULTLIST-"][0]))
+    if event == "-RACERESULTLIST-" or event == "-RESULTCLASSLIST-" :
+        window["-RESULTS-"].Update(data.get_race_winner(values["-RACERESULTLIST-"][0], values["-RESULTCLASSLIST-"][0]))
 
     # Functions to run after any update
     set_save_lap_activity()

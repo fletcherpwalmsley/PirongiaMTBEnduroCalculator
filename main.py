@@ -29,7 +29,7 @@ def clear_rider_data_fields(window):
     window["-NAME-"].update("")
     window["-NUMBER-"].update("")
     window["-EMECONTACT-"].update("")
-    window["-CLASSLIST-"].update(set_to_index=0)
+    # window["-CLASSLIST-"].update(set_to_index=0)
     window["-SAVED RIDERS-"].update(set_to_index=-1)
 
 def save_data():
@@ -412,6 +412,8 @@ while True:
              )
         )
         window["-RIDERLAPTIMES-"].update(data.get_number_laptimes_str(values["-RACELIST-"][0], values["-DATANUM-"]))
+        window["-STARTTIME-"].update("")
+        window["-ENDTIME-"].update("")
         save_data()
 
     # Race has been updated, update the lap times if the number is valid

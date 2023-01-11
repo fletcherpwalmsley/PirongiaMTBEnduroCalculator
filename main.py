@@ -9,11 +9,19 @@ import pickle
 valid_time_flag = False
 valid_name_flag = False
 
-def set_save_lap_activity():
+def set_save_lap_activity(values):
     if valid_name_flag and valid_time_flag:
         window["-SAVELAP-"].update(disabled=False)
     else:
         window["-SAVELAP-"].update(disabled=True)
+
+
+    # Show/Hide Buttons
+    if values["-RIDERLAPTIMES-"]:
+        window["-DELETELAP-"].update(disabled=False)
+    else:
+        window["-DELETELAP-"].update(disabled=True)
+
 
 # Making this global so it is easer to find the indexes of
 race_classes = ["Mens", "Womens", "Open", "Youth Male", "Youth Female", "EBike"]
@@ -31,6 +39,8 @@ def clear_rider_data_fields(window):
     window["-EMECONTACT-"].update("")
     # window["-CLASSLIST-"].update(set_to_index=0)
     window["-SAVED RIDERS-"].update(set_to_index=-1)
+
+    # Clear lap data fields
 
 def save_data():
     data.csv_save()
@@ -102,15 +112,16 @@ data_enter_column = [
     ],
     [
         sg.Text("Rider Name:"),
-        sg.Text("Test", size=(25, 1), enable_events=True, key="-DATANAME-"),
+        sg.Text("", size=(25, 1), enable_events=True, key="-DATANAME-"),
     ],
     [
         sg.Text("Lap Time:"),
-        sg.Text("Test", size=(25, 1), enable_events=True, key="-DATATIME-"),
+        sg.Text("", size=(25, 1), enable_events=True, key="-DATATIME-"),
     ],
     [
         sg.Button(button_text="Save Lap", key="-SAVELAP-", disabled=True),
-    ],
+        sg.Button(button_text="Delete Lap", key="-DELETELAP-", disabled=True),
+    ]
 ]
 
 rider_lap_times = [
@@ -233,32 +244,18 @@ class DataHandler:
 
     # Data create/delete functions
     def create_rider(self, rider):
-        self.rider_data[rider] = {}
+        self.rider_data[rider] = {'Races':{}}
 
     def update_rider_data(self, rider, field, value):
         self.rider_data[rider][field] = value
 
     def add_lap_time(self, race, number, time):
-        match race:
-            case "Race 1":
-                if number in self.race1_times:
-                    self.race1_times[number].append(time)
-                else:
-                    self.race1_times[number] = [time]
+        riderName = self.get_name_from_number(number)
+        if race in self.rider_data[riderName]['Races']:
+            self.rider_data[riderName]['Races'][race].append(time)
+        else:
+            self.rider_data[riderName]['Races'][race]=[time]
 
-            case "Race 2":
-                if number in self.race2_times:
-                    self.race2_times[number].append(time)
-                else:
-                    self.race2_times[number] = [time]
-
-            case "Race 3":
-                if number in self.race3_times:
-                    self.race3_times[number].append(time)
-                else:
-                    self.race3_times[number] = [time]
-            case _:
-                assert ("Not a valid race type")
 
     def delete_rider(self, rider):
         del self.rider_data[rider]
@@ -277,39 +274,44 @@ class DataHandler:
                 return rider
         return 0
 
-    def get_number_laptimes_str(self, race, number):
-        dt_list = []
-        match race:
-            case "Race 1":
-                dt_list = self.race1_times[number]
-
-            case "Race 2":
-                dt_list = self.race2_times[number]
-
-            case "Race 3":
-                dt_list = self.race3_times[number]
-
+    def get_number_laptimes_str_list(self, race, number):
         retlist = []
-        for time in dt_list:
-            retlist.append(str(time))
+        riderName = self.get_name_from_number(number)
+        for time in self.rider_data[riderName]['Races'][race]:
+            retlist.append(str(time[2]))
         return retlist
 
+    def get_lap_data_from_time(self, race, number, deltatime):
+        riderName = self.get_name_from_number(number)
+        for time in self.rider_data[riderName]['Races'][race]:
+            if deltatime == str(time[2]):
+                return time
+        return ("","","")
+
+    def delete_lap(self, race, number, deltatime):
+        riderName = self.get_name_from_number(number)
+        for time in self.rider_data[riderName]['Races'][race]:
+            if deltatime == str(time[2]):
+                self.rider_data[riderName]['Races'][race].remove(time)
+
     def get_race_winner(self, race, _class):
-        race_dict = {}
         sort_list = []
         ret_list = []
-        match race:
-            case "Race 1":
-                race_dict = self.race1_times
-            case "Race 2":
-                race_dict = self.race2_times
-            case "Race 3":
-                race_dict = self.race3_times
 
-        for number in race_dict.keys():
-            if (self.number_in_class(number, _class)):
-                sort_list.append((min(race_dict[number]), number))
+        for rider in self.rider_data.values():
+            if (race in rider['Races']) and (rider['-CLASSLIST-'] == _class):
+                lowest_time = rider['Races'][race][0][2]
+                for lap in rider['Races'][race]:
+                    if lap[2] < lowest_time:
+                        lowest_time = lap[2]
+                sort_list.append((lowest_time, rider["-NUMBER-"]))
 
+            # if (self.number_in_class(number, _class)):
+            #     lowest_time = race_dict[number][0][2]
+            #     for result in race_dict[number]:
+            #         if result[2] < lowest_time:
+            #             lowest_time = result[2]
+            #     sort_list.append((lowest_time, number))
         sort_list.sort()
 
         i = 1
@@ -373,7 +375,6 @@ while True:
         clear_rider_data_fields(window)
         save_data()
 
-
 # ***** Race Data Tab ******
     # If the number is valid, show the corresponding name
     if event == "-DATANUM-":
@@ -381,7 +382,7 @@ while True:
         if name != 0:
             window["-DATANAME-"].update(name, text_color="Lime")
             try:
-                window["-RIDERLAPTIMES-"].update(data.get_number_laptimes_str(values["-RACELIST-"][0], values["-DATANUM-"]))
+                window["-RIDERLAPTIMES-"].update(data.get_number_laptimes_str_list(values["-RACELIST-"][0], values["-DATANUM-"]))
             except:
                 window["-RIDERLAPTIMES-"].update([])
             valid_name_flag = True
@@ -407,11 +408,13 @@ while True:
             values["-RACELIST-"][0],
             values["-DATANUM-"],
             (
+                datetime.strptime(values["-ENDTIME-"], "%H.%M.%S"),
+                datetime.strptime(values["-STARTTIME-"], "%H.%M.%S"),
                 datetime.strptime(values["-ENDTIME-"], "%H.%M.%S") -
                 datetime.strptime(values["-STARTTIME-"], "%H.%M.%S")
              )
         )
-        window["-RIDERLAPTIMES-"].update(data.get_number_laptimes_str(values["-RACELIST-"][0], values["-DATANUM-"]))
+        window["-RIDERLAPTIMES-"].update(data.get_number_laptimes_str_list(values["-RACELIST-"][0], values["-DATANUM-"]))
         window["-STARTTIME-"].update("")
         window["-ENDTIME-"].update("")
         save_data()
@@ -420,17 +423,39 @@ while True:
     if event == "-RACELIST-":
         if valid_name_flag:
             try:
-                window["-RIDERLAPTIMES-"].update(data.get_number_laptimes_str(values["-RACELIST-"][0], values["-DATANUM-"]))
+                window["-RIDERLAPTIMES-"].update(data.get_number_laptimes_str_list(values["-RACELIST-"][0], values["-DATANUM-"]))
             except:
                 window["-RIDERLAPTIMES-"].update([])
 
+    # Previously entered lap has been selected, load it's data in
+    if event == "-RIDERLAPTIMES-":
+        # As we only can the the value from the list, not the index. We have to loop over all times to find which one
+        # it corresponds to
+        timedata = data.get_lap_data_from_time(values["-RACELIST-"][0], values["-DATANUM-"][0], values["-RIDERLAPTIMES-"][0])
+        window["-STARTTIME-"].update(timedata[1].strftime("%H.%M.%S"))
+        window["-ENDTIME-"].update(timedata[0].strftime("%H.%M.%S"))
+        window["-DATATIME-"].update(timedata[2])
+
+    # Delete a lap
+    if event == "-DELETELAP-":
+        data.delete_lap(values["-RACELIST-"][0], values["-DATANUM-"][0], values["-RIDERLAPTIMES-"][0])
+        window["-RIDERLAPTIMES-"].update(data.get_number_laptimes_str_list(values["-RACELIST-"][0], values["-DATANUM-"]))
+        window["-STARTTIME-"].update("")
+        window["-ENDTIME-"].update("")
+        save_data()
+
 # ***** Result Tab ******
     if event == "-RACERESULTLIST-" or event == "-RESULTCLASSLIST-" :
-        window["-RESULTS-"].Update(data.get_race_winner(values["-RACERESULTLIST-"][0], values["-RESULTCLASSLIST-"][0]))
+
+        if values["-RACERESULTLIST-"][0] == "Series":
+            window["-RESULTS-"].Update(
+                data.get_race_winner(values["-RESULTCLASSLIST-"][0]))
+        else:
+            window["-RESULTS-"].Update(
+                data.get_race_winner(values["-RACERESULTLIST-"][0], values["-RESULTCLASSLIST-"][0]))
 
     # Functions to run after any update
-    set_save_lap_activity()
+    set_save_lap_activity(values)
 
 save_data()
 window.close()
-

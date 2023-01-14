@@ -306,12 +306,6 @@ class DataHandler:
                         lowest_time = lap[2]
                 sort_list.append((lowest_time, rider["-NUMBER-"]))
 
-            # if (self.number_in_class(number, _class)):
-            #     lowest_time = race_dict[number][0][2]
-            #     for result in race_dict[number]:
-            #         if result[2] < lowest_time:
-            #             lowest_time = result[2]
-            #     sort_list.append((lowest_time, number))
         sort_list.sort()
 
         i = 1
@@ -320,6 +314,39 @@ class DataHandler:
             i = i+1
 
         return ret_list
+
+
+    def get_series_winner(self, _class):
+        sort_list = []
+        ret_list = []
+
+        ##### Update this car coded list if the number of races changes ####
+        races = ["Race 1", "Race 2"]
+
+        for rider in self.rider_data.values():
+
+            # Make sure the rider has done all the races
+            if len(rider['Races'].keys()) == len(races):
+                series_time = datetime.strptime("0.0.0", "%H.%M.%S")
+                for race in races:
+                    if (race in rider['Races']) and (rider['-CLASSLIST-'] == _class):
+                        lowest_time = rider['Races'][race][0][2]
+                        for lap in rider['Races'][race]:
+                            if lap[2] < lowest_time:
+                                lowest_time = lap[2]
+                        series_time = series_time + lowest_time
+                sort_list.append((series_time.strftime("%H:%M:%S"), rider["-NUMBER-"]))
+
+        sort_list.sort()
+
+        i = 1
+        for val in sort_list:
+            ret_list.append(f'({i}): #{val[1]} - {self.get_name_from_number(val[1])} - {val[0]} ')
+            i = i+1
+
+        return ret_list
+
+
 
     def number_in_class(self, number, _class):
         name = self.get_name_from_number(number)
@@ -432,9 +459,14 @@ while True:
         # As we only can the the value from the list, not the index. We have to loop over all times to find which one
         # it corresponds to
         timedata = data.get_lap_data_from_time(values["-RACELIST-"][0], values["-DATANUM-"][0], values["-RIDERLAPTIMES-"][0])
-        window["-STARTTIME-"].update(timedata[1].strftime("%H.%M.%S"))
-        window["-ENDTIME-"].update(timedata[0].strftime("%H.%M.%S"))
-        window["-DATATIME-"].update(timedata[2])
+        try:
+            window["-STARTTIME-"].update(timedata[1].strftime("%H.%M.%S"))
+            window["-ENDTIME-"].update(timedata[0].strftime("%H.%M.%S"))
+            window["-DATATIME-"].update(timedata[2])
+        except:
+            window["-STARTTIME-"].update("Problem loading time (bug)")
+            window["-ENDTIME-"].update("But this stops a crash")
+            window["-DATATIME-"].update("I've run out of time to fix")
 
     # Delete a lap
     if event == "-DELETELAP-":
@@ -449,7 +481,7 @@ while True:
 
         if values["-RACERESULTLIST-"][0] == "Series":
             window["-RESULTS-"].Update(
-                data.get_race_winner(values["-RESULTCLASSLIST-"][0]))
+                data.get_series_winner(values["-RESULTCLASSLIST-"][0]))
         else:
             window["-RESULTS-"].Update(
                 data.get_race_winner(values["-RACERESULTLIST-"][0], values["-RESULTCLASSLIST-"][0]))
